@@ -123,10 +123,6 @@ To add support for additional database systems:
 3. Add query generation rules in `query_generator.py`
 4. Update the UI in `app.py` to include the new database option
 
-## License
-
-[MIT License](LICENSE)
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
