@@ -51,12 +51,23 @@ pip install -r requirements.txt
 
 4. Set up your environment variables in `.env` file:
 ```
-GEMINI_API_KEY=your_gemini_api_key
-MONGODB_URI=your_mongodb_connection_string
-POSTGRES_CONNECTION_STRING=your_postgres_connection_string
+# PostgreSQL Configuration
+POSTGRES_HOST=your_postgres_host
+POSTGRES_PORT=your_postgres_port
+POSTGRES_DBNAME=your_postgres_database
+POSTGRES_USER=your_postgres_username
+POSTGRES_PASSWORD=your_postgres_password
+
+# MongoDB Configuration
+MONGODB_URI=mongodb://localhost:27017/
+
+# Redis Configuration
 REDIS_HOST=your_redis_host
 REDIS_PORT=your_redis_port
-REDIS_PASSWORD=your_redis_password
+REDIS_DB=your_redis_database
+
+# Other configurations
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
 ## Usage
