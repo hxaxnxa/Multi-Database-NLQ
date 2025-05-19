@@ -112,6 +112,10 @@ streamlit run app.py
 4. **Query Execution**: The generated query is executed against the selected database
 5. **Result Visualization**: Query results are displayed in a dataframe format
 
+![image](https://github.com/user-attachments/assets/ef894674-51d4-42c0-b25b-f98692b74865)
+
+![image](https://github.com/user-attachments/assets/d499c431-b764-4c6b-89d8-3cd930da9652)
+
 ## Development
 
 ### Adding Support for New Database Types
