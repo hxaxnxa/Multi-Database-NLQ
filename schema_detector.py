@@ -2,6 +2,7 @@ import sqlite3
 import psycopg2
 from pymongo import MongoClient
 import redis
+import json
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 import os
@@ -68,16 +69,63 @@ def get_redis_schema():
         password=os.getenv("REDIS_PASSWORD", None),
         decode_responses=True
     )
-    schema = {}
-    keys = r.keys('*:*')
-    for key in keys:
-        key_type, key_id = key.split(':')
-        if key_type not in schema:
-            schema[key_type] = []
-        fields = r.hgetall(key)
-        schema[key_type].append([(k, type(v).__name__) for k, v in fields.items()])
-    r.close()
-    return schema
+    try:
+        schema = {}
+        keys = r.keys('*:*')
+        for key in keys:
+            try:
+                # Split the key into type and ID (e.g., "customer:1" -> "customer", "1")
+                key_type, key_id = key.split(':')
+                if key_type not in schema:
+                    schema[key_type + "s"] = []  # Pluralize to match other DBs (e.g., "customers")
+                
+                # Check the type of the key
+                redis_type = r.type(key)
+                print(f"Type of {key}: {redis_type}")  # Debug log
+                if redis_type != "hash":
+                    print(f"Skipping {key} because type is {redis_type}, expected hash")
+                    continue
+                
+                # Retrieve the value using HGETALL for hash keys
+                hash_data = r.hgetall(key)
+                if not hash_data:
+                    print(f"No data found for {key}")
+                    continue
+                
+                # Convert hash data to a dictionary with proper type inference
+                fields = {}
+                for field, value in hash_data.items():
+                    try:
+                        if field in ['price', 'total_price', 'credit_limit', 'discount', 'stock_quantity', 'quantity']:
+                            fields[field] = float(value)
+                        elif field in ['customer_id', 'product_id', 'order_id']:
+                            fields[field] = int(value)
+                        else:
+                            fields[field] = value
+                    except (ValueError, TypeError):
+                        fields[field] = value  # Fallback to string if conversion fails
+                
+                # Add the fields and their types to the schema
+                schema[key_type + "s"].append([(k, type(v).__name__) for k, v in fields.items()])
+            except (ValueError, redis.RedisError) as e:
+                print(f"Error processing key {key}: {str(e)}")  # Debug log
+                continue
+        
+        # Flatten the schema to match the format expected by other functions
+        for key_type in schema:
+            if schema[key_type]:
+                # Take the first sample's fields as the schema (assuming consistency)
+                schema[key_type] = schema[key_type][0]
+            else:
+                del schema[key_type]  # Remove empty schemas
+        
+        if not schema:
+            print("No valid hash keys found to determine schema")
+            return {"error": "No valid hash keys found to determine schema"}
+        
+        return schema
+    finally:
+        r.close()
 
 def generate_schema_description(schema):
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", api_key=os.getenv("GEMINI_API_KEY"))

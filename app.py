@@ -6,6 +6,8 @@ import json
 import sqlite3
 from dotenv import load_dotenv
 import os
+import redis
+import pandas as pd
 
 # Load environment variables
 load_dotenv()
@@ -86,6 +88,74 @@ if st.button("Execute Query"):
                     st.stop()
                 result = execute_redis_query(generated_query_dict)
                 
+                # For Redis queries, fetch additional data for joins and apply transformations
+                if db_type == "Redis" and "customer" in nl_query.lower() and "product" in nl_query.lower():
+                    redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+                    try:
+                        enriched_results = []
+                        for _, order in result.iterrows():
+                            # Fetch product
+                            product_key = f"product:{order['product_id']}"
+                            product_data = None
+                            try:
+                                product_hash = redis_client.hgetall(product_key)
+                                if product_hash:
+                                    product_data = {}
+                                    for field, value in product_hash.items():
+                                        if field in ["price", "discount", "stock_quantity"]:
+                                            product_data[field] = float(value)
+                                        else:
+                                            product_data[field] = value
+                            except redis.RedisError as e:
+                                print(f"Error fetching product {product_key}: {str(e)}")
+                                continue
+                            # Fetch customer
+                            customer_key = f"customer:{order['customer_id']}"
+                            customer_data = None
+                            try:
+                                customer_hash = redis_client.hgetall(customer_key)
+                                if customer_hash:
+                                    customer_data = {}
+                                    for field, value in customer_hash.items():
+                                        if field in ["credit_limit"]:
+                                            customer_data[field] = float(value)
+                                        else:
+                                            customer_data[field] = value
+                            except redis.RedisError as e:
+                                print(f"Error fetching customer {customer_key}: {str(e)}")
+                                continue
+                            if customer_data and product_data:
+                                enriched_row = {
+                                    "customer_name": f"{customer_data['first_name']} {customer_data['last_name']}",
+                                    "email": customer_data.get("email"),
+                                    "phone": customer_data.get("phone"),
+                                    "city": customer_data.get("city"),
+                                    "country": customer_data.get("country"),
+                                    "credit_limit": customer_data.get("credit_limit"),
+                                    "registration_date": customer_data.get("registration_date"),
+                                    "product_name": product_data.get("name"),
+                                    "category": product_data.get("category"),
+                                    "price": product_data.get("price"),
+                                    "stock_quantity": product_data.get("stock_quantity"),
+                                    "manufacturer": product_data.get("manufacturer"),
+                                    "release_date": product_data.get("release_date"),
+                                    "discount": product_data.get("discount"),
+                                    "order_id": int(order.get("order_id")),
+                                    "quantity": int(order.get("quantity")),
+                                    "order_date": order.get("order_date"),
+                                    "total_price": float(order.get("total_price")),
+                                    "status": order.get("status"),
+                                    "shipping_address": order.get("shipping_address"),
+                                    "payment_method": order.get("payment_method")
+                                }
+                                enriched_results.append(enriched_row)
+                        if enriched_results:
+                            result = pd.DataFrame(enriched_results)
+                        else:
+                            result = pd.DataFrame(columns=["customer_name", "email", "phone", "city", "country", "credit_limit", "registration_date", "product_name", "category", "price", "stock_quantity", "manufacturer", "release_date", "discount", "order_id", "quantity", "order_date", "total_price", "status", "shipping_address", "payment_method"])
+                    finally:
+                        redis_client.close()
+                
             st.session_state.query_result = result
         except Exception as e:
             st.error(f"Error executing query: {str(e)}")
@@ -95,4 +165,7 @@ if st.button("Execute Query"):
 # Display the result if it exists
 if "query_result" in st.session_state:
     st.subheader("Query Result")
-    st.dataframe(st.session_state.query_result)
+    if not st.session_state.query_result.empty:
+        st.dataframe(st.session_state.query_result)
+    else:
+        st.warning("No results found.")
